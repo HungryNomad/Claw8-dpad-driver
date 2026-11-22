@@ -28,7 +28,7 @@ const SEARCH = [
 ];
 
 /** Reads `explicit`, or the first `name` found in {@linkcode SEARCH}. */
-async function payloadFile(name: string, explicit?: string): Promise<Uint8Array> {
+export async function payloadFile(name: string, explicit?: string): Promise<Uint8Array> {
   for (const path of explicit ? [explicit] : SEARCH.map((d) => join(d, name))) {
     try {
       return await Deno.readFile(path);
@@ -77,7 +77,9 @@ async function main(args: string[]): Promise<void> {
     } else {
       const s = await status(fat);
       console.log(
-        s.installed
+        s.patched
+          ? "D-pad support is built in (the stick came from a patched Ventoy package)."
+          : s.installed
           ? `D-pad support is installed${s.driver ? "" : ", but the driver is missing"}.`
           : `D-pad support is not installed${
             s.ventoy ? "" : " (and this doesn't look like Ventoy)"

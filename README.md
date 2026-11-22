@@ -20,8 +20,10 @@ manager patching, so firmware updates leave it alone.
 ## Where to use it
 
 - [`refind/`](refind/README.md): drop the driver into rEFInd's `drivers_x64`.
-- [`ventoy/`](ventoy/README.md): a chainloader on the Ventoy stick loads the
-  driver, then Ventoy. A Deno installer sets it up and removes it.
+- [`ventoy/`](ventoy/README.md): a chainloader loads the driver, then Ventoy.
+  Easiest: download a patched Ventoy package from this repository's
+  [Releases](../../releases) and use it exactly like Ventoy. Or add the d-pad
+  to an existing stick with the Deno installer.
 
 ## Layout
 
@@ -32,7 +34,10 @@ manager patching, so firmware updates leave it alone.
     looks to firmware.
 - `ventoy/chainloader/` → `claw-chainload.efi`: loads the driver, then the
   boot loader it replaced.
-- `ventoy/installer/`: Deno installer for Ventoy sticks.
+- `ventoy/installer/`: Deno installer for Ventoy sticks, the Ventoy package
+  patcher and its QEMU smoke test.
+- `.github/workflows/ventoy-release.yml`: weekly check for a new Ventoy
+  release; builds, boot-tests and publishes the patched packages.
 
 ## Build
 
@@ -42,4 +47,5 @@ cargo test -p claw-common   # host tests
 cargo efi                   # release build of all .efi files
 ```
 
-Output: `target/x86_64-unknown-uefi/release/*.efi`.
+Output: `target/x86_64-unknown-uefi/release/*.efi`. Every workflow run also
+uploads them as the `claw-efi` artifact.
