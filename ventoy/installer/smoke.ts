@@ -255,7 +255,7 @@ async function boot(disk: string, name: string, opts: BootOptions): Promise<bool
       ...["-monitor", `unix:${socket},server,nowait`, "-serial", `file:${serial}`],
     ],
     stdout: "null",
-    stderr: "piped",
+    stderr: "inherit",
   }).spawn();
   let screen: Screen | undefined;
   let ok = false;
@@ -282,9 +282,10 @@ async function boot(disk: string, name: string, opts: BootOptions): Promise<bool
     }
     if (!ok) {
       const log = await Deno.readTextFile(serial).catch(() => "");
-      console.error(
-        `${name}: ${why}. Serial output:\n${stripAnsi(log)}`,
-      );
+      const seen = screen
+        ? `${screen.width}x${screen.height}, ${colours(screen, MIN_COLOURS)}+ colours`
+        : "none captured";
+      console.error(`${name}: ${why}. Last screen: ${seen}. Serial output:\n${stripAnsi(log)}`);
     }
   } finally {
     qemu.kill();

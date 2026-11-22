@@ -167,6 +167,7 @@ jobs:
           EOF
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: ventoy-${{ env.VERSION }}-claw
           path: |
