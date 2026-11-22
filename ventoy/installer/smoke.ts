@@ -220,10 +220,9 @@ async function png(screen: Screen): Promise<Uint8Array> {
   return new Uint8Array(await new Blob(parts).arrayBuffer());
 }
 
-/** Sends one command to QEMU's human monitor on a unix socket. */
-async function monitor(socket: string, command: string): Promise<void> {
-  using conn = await Deno.connect({ transport: "unix", path: socket });
-  await conn.write(new TextEncoder().encode(`${command}\n`));
+/** Sends one command to QEMU's human monitor on its stdin, then gives it time to act. */
+async function monitor(qemu: WritableStreamDefaultWriter<Uint8Array>, command: string) {
+  await qemu.write(new TextEncoder().encode(`${command}\n`));
   await new Promise((r) => setTimeout(r, 500));
 }
 
@@ -240,7 +239,7 @@ interface BootOptions {
  */
 async function boot(disk: string, name: string, opts: BootOptions): Promise<boolean> {
   const work = await Deno.makeTempDir({ prefix: "claw-smoke-" });
-  const [vars, socket, serial, dump] = ["vars.fd", "mon.sock", "serial.log", "screen.ppm"]
+  const [vars, serial, dump] = ["vars.fd", "serial.log", "screen.ppm"]
     .map((f) => join(work, f));
   await Deno.copyFile(join(opts.ovmf, "OVMF_VARS_4M.fd"), vars);
   const qemu = new Deno.Command("qemu-system-x86_64", {
@@ -252,11 +251,13 @@ async function boot(disk: string, name: string, opts: BootOptions): Promise<bool
       ...["-drive", `if=pflash,format=raw,file=${vars}`],
       ...["-device", "qemu-xhci", "-drive", `if=none,id=stick,format=raw,file=${disk}`],
       ...["-device", "usb-storage,drive=stick,bootindex=1"],
-      ...["-monitor", `unix:${socket},server,nowait`, "-serial", `file:${serial}`],
+      ...["-monitor", "stdio", "-serial", `file:${serial}`],
     ],
+    stdin: "piped",
     stdout: "null",
     stderr: "inherit",
   }).spawn();
+  const control = qemu.stdin.getWriter();
   let screen: Screen | undefined;
   let ok = false;
   let why = "timed out";
@@ -270,7 +271,7 @@ async function boot(disk: string, name: string, opts: BootOptions): Promise<bool
         why = `serial output has "${failure}"`;
         break;
       }
-      await monitor(socket, `screendump ${dump}`).catch(() => {});
+      await monitor(control, `screendump ${dump}`);
       screen = await Deno.readFile(dump).then(parsePpm).catch(() => screen);
       if (
         screen?.width === MENU.width && screen.height === MENU.height &&
