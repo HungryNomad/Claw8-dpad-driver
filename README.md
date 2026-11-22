@@ -4,10 +4,10 @@ Lets the MSI Claw 8 AI+'s built-in controller drive UEFI boot menus like a
 keyboard. One small UEFI driver, `claw-dpad.efi`, with no firmware or boot
 manager patching, so firmware updates leave it alone.
 
-> **Untested on hardware.** Everything here builds clean and passes end-to-end
-> tests in QEMU with OVMF firmware using a stand-in USB device (including the
-> real Ventoy 1.1.18 boot chain), but it has not yet run on a real Claw.
-> Secure Boot must be off (the files are unsigned).
+> **Tested on an MSI Claw 8 AI+** in rEFInd (driver in `EFI\refind\drivers_x64`)
+> and in Ventoy (both the patched release and a stick patched in place). Every
+> build is also boot-tested in QEMU. Secure Boot must be off (the files are
+> unsigned).
 
 | Button     | Key                       | In a boot menu          |
 | ---------- | ------------------------- | ----------------------- |

@@ -160,7 +160,7 @@ jobs:
           cat > ../notes.md <<EOF
           [Ventoy $VERSION](https://github.com/$UPSTREAM/releases/tag/v$VERSION) with the MSI Claw d-pad driver built into its boot image. Use it exactly like Ventoy: run \`Ventoy2Disk\` to install to a stick, or to update one. The d-pad keeps working after either, with Ventoy's Secure Boot support option on or off.
 
-          **Secure Boot must be off in the firmware**, because the added files are unsigned. Untested on Claw hardware so far; each build is boot-tested in QEMU.
+          **Secure Boot must be off in the firmware**, because the added files are unsigned. Tested on an MSI Claw 8 AI+; each build is also boot-tested in QEMU.
 
           What changed: only \`ventoy/ventoy.disk.img.xz\`. Ventoy's GRUB moves to \`/EFI/claw/grubx64.efi\`, \`claw-chainload\` takes its place at \`/EFI/BOOT/grubx64_real.efi\`, and the driver is added as \`/EFI/claw/claw-dpad.efi\`. Each package also gains \`CLAW-DPAD-README.txt\` and \`LICENSE-Ventoy.txt\`.
 
