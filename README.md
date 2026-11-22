@@ -48,4 +48,5 @@ cargo efi                   # release build of all .efi files
 ```
 
 Output: `target/x86_64-unknown-uefi/release/*.efi`. Every workflow run also
-uploads them as the `claw-efi` artifact.
+uploads them as the `claw-efi` artifact, and each [release](../../releases)
+attaches them next to the patched Ventoy packages.
