@@ -1,0 +1,17 @@
+[package]
+name = "claw-dpad"
+description = "UEFI boot-service driver: MSI Claw gamepad as keyboard input (d-pad to arrows)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+claw-common.workspace = true
+uefi.workspace = true
+uefi-raw.workspace = true
+
+[features]
+# Print bind / console-path messages on screen (diagnostics on the device).
+verbose = []
+# See claw-common's feature of the same name; implies `verbose`.
+qemu-test = ["claw-common/qemu-test", "verbose"]

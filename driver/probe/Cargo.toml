@@ -1,0 +1,11 @@
+[package]
+name = "claw-probe"
+description = "UEFI app that dumps the MSI Claw gamepad's USB descriptors and live reports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+claw-common.workspace = true
+uefi = { workspace = true, features = ["alloc", "global_allocator"] }
+uefi-raw.workspace = true

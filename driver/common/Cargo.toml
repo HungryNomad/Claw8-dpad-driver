@@ -1,0 +1,11 @@
+[package]
+name = "claw-common"
+description = "Platform-independent MSI Claw gamepad parsing and key mapping"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# Also accept QEMU's usb-tablet (0627:0001) as a "gamepad" so the full
+# pipeline can be exercised under OVMF. Never ship with this on.
+qemu-test = []
