@@ -150,10 +150,11 @@ jobs:
             deno task smoke --shots "$GITHUB_WORKSPACE/shots/${name%.tar.gz}" "$pkg"
           done
 
-      - name: Write checksums and notes
+      - name: Add the .efi files, checksums and notes
         run: |
+          cp target/x86_64-unknown-uefi/release/*.efi dist/
           cd dist
-          sha256sum ventoy-* > SHA256SUMS
+          sha256sum ventoy-* *.efi > SHA256SUMS
           cat SHA256SUMS
           src="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA"
           cat > ../notes.md <<EOF
@@ -162,6 +163,8 @@ jobs:
           **Secure Boot must be off in the firmware**, because the added files are unsigned. Untested on Claw hardware so far; each build is boot-tested in QEMU.
 
           What changed: only \`ventoy/ventoy.disk.img.xz\`. Ventoy's GRUB moves to \`/EFI/claw/grubx64.efi\`, \`claw-chainload\` takes its place at \`/EFI/BOOT/grubx64_real.efi\`, and the driver is added as \`/EFI/claw/claw-dpad.efi\`. Each package also gains \`CLAW-DPAD-README.txt\` and \`LICENSE-Ventoy.txt\`.
+
+          The same build's \`claw-dpad.efi\` (the driver), \`claw-chainload.efi\` and \`claw-probe.efi\` are attached too, for rEFInd or a stick you patch yourself. \`SHA256SUMS\` covers every file.
 
           This is not an official Ventoy release. Ventoy is GPLv3 (\`LICENSE-Ventoy.txt\`); its source is at https://github.com/$UPSTREAM/tree/v$VERSION. The d-pad sources for this build: $src
           EOF
