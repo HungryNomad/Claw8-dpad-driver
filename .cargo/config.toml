@@ -1,4 +1,4 @@
 # Host builds (unit tests) use the default target; the .efi images are built
 # with `cargo efi`.
 [alias]
-efi = "build --release --target x86_64-unknown-uefi -p claw-probe -p claw-dpad"
+efi = "build --release --target x86_64-unknown-uefi -p claw-probe -p claw-dpad -p claw-chainload"

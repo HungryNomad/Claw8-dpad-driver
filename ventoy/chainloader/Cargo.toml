@@ -1,0 +1,9 @@
+[package]
+name = "claw-chainload"
+description = "UEFI chainloader: start claw-dpad.efi, then the boot loader it replaced (Ventoy)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+uefi.workspace = true

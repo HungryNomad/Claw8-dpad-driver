@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["driver/common", "driver/dpad", "driver/probe"]
+members = ["driver/common", "driver/dpad", "driver/probe", "ventoy/chainloader"]
 
 [workspace.package]
 version = "0.1.0"

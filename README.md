@@ -5,8 +5,9 @@ keyboard. One small UEFI driver, `claw-dpad.efi`, with no firmware or boot
 manager patching, so firmware updates leave it alone.
 
 > **Untested on hardware.** Everything here builds clean and passes end-to-end
-> tests in QEMU with OVMF firmware using a stand-in USB device, but it has not
-> yet run on a real Claw. Secure Boot must be off (the files are unsigned).
+> tests in QEMU with OVMF firmware using a stand-in USB device (including the
+> real Ventoy 1.1.18 boot chain), but it has not yet run on a real Claw.
+> Secure Boot must be off (the files are unsigned).
 
 | Button     | Key                       | In a boot menu          |
 | ---------- | ------------------------- | ----------------------- |
@@ -19,6 +20,8 @@ manager patching, so firmware updates leave it alone.
 ## Where to use it
 
 - [`refind/`](refind/README.md): drop the driver into rEFInd's `drivers_x64`.
+- [`ventoy/`](ventoy/README.md): a chainloader on the Ventoy stick loads the
+  driver, then Ventoy. A Deno installer sets it up and removes it.
 
 ## Layout
 
@@ -27,13 +30,16 @@ manager patching, so firmware updates leave it alone.
   - `dpad/` → `claw-dpad.efi`: the boot-service driver.
   - `probe/` → `claw-probe.efi`: diagnostic app that logs how the controller
     looks to firmware.
+- `ventoy/chainloader/` → `claw-chainload.efi`: loads the driver, then the
+  boot loader it replaced.
+- `ventoy/installer/`: Deno installer for Ventoy sticks.
 
 ## Build
 
 ```sh
 rustup target add x86_64-unknown-uefi
 cargo test -p claw-common   # host tests
-cargo efi                   # release build of claw-dpad.efi and claw-probe.efi
+cargo efi                   # release build of all .efi files
 ```
 
 Output: `target/x86_64-unknown-uefi/release/*.efi`.
