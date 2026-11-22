@@ -1,7 +1,7 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { join } from "@std/path";
 import { DirFat } from "../src/fat.ts";
-import { install, PATHS, status, uninstall } from "../src/stick.ts";
+import { install, patchImage, PATHS, status, uninstall } from "../src/stick.ts";
 
 const enc = (s: string) => new TextEncoder().encode(s);
 const VENTOY = enc("ventoy shim v1");
@@ -25,7 +25,13 @@ Deno.test("install keeps the original next to the chainloader and backs it up", 
   assertEquals(await fat.read(PATHS.original), VENTOY);
   assertEquals(await fat.read(PATHS.driver), payload.driver);
   assertEquals(backups, [VENTOY]);
-  assertEquals(await status(fat), { ventoy: true, installed: true, original: true, driver: true });
+  assertEquals(await status(fat), {
+    ventoy: true,
+    installed: true,
+    original: true,
+    driver: true,
+    patched: false,
+  });
 });
 
 Deno.test("reinstall updates files without losing the original", async () => {
@@ -60,5 +66,37 @@ Deno.test("install refuses non-Ventoy partitions and wrong loaders", async () =>
   await assertRejects(() => install(fat, { ...payload, loader: enc("other") }, backup));
   await fat.remove("/grub/grub.cfg");
   await assertRejects(() => install(fat, payload, backup));
+  assertEquals(await fat.read(PATHS.boot), VENTOY);
+});
+
+/** A temp folder laid out like Ventoy's boot image (shim, fbx64 and GRUB). */
+async function image() {
+  const { fat } = await stick();
+  await fat.write(PATHS.grub, enc("ventoy grub"));
+  return fat;
+}
+
+Deno.test("patchImage puts the chainloader in GRUB's place and keeps shim", async () => {
+  const fat = await image();
+  await patchImage(fat, payload);
+  assertEquals(await fat.read(PATHS.grub), payload.loader);
+  assertEquals(await fat.read(PATHS.movedGrub), enc("ventoy grub"));
+  assertEquals(await fat.read(PATHS.driver), payload.driver);
+  assertEquals(await fat.read(PATHS.boot), VENTOY);
+  assert((await status(fat)).patched);
+});
+
+Deno.test("patchImage refuses a patched or non-Ventoy image", async () => {
+  const fat = await image();
+  await patchImage(fat, payload);
+  await assertRejects(() => patchImage(fat, payload), Error, "already patched");
+  const plain = (await stick()).fat;
+  await assertRejects(() => patchImage(plain, payload), Error, "doesn't look like");
+});
+
+Deno.test("install refuses a stick made from a patched package", async () => {
+  const fat = await image();
+  await patchImage(fat, payload);
+  await assertRejects(() => install(fat, payload, () => Promise.resolve()), Error, "patched");
   assertEquals(await fat.read(PATHS.boot), VENTOY);
 });

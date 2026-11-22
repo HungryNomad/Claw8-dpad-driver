@@ -1,0 +1,200 @@
+# Builds Ventoy packages with MSI Claw d-pad support and publishes them as a
+# release of this repository, once per upstream Ventoy version.
+#
+# - Weekly, and on demand: if the newest Ventoy (or the version given) has no
+#   release here yet, build, test and publish one. Runs on main only.
+# - Pull requests: the same build and tests, kept as a workflow artifact.
+#   Nothing is published.
+name: Patched Ventoy release
+
+on:
+  schedule:
+    - cron: "23 5 * * 1" # Mondays 05:23 UTC
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Ventoy version, e.g. 1.1.18 (default is the newest)
+        required: false
+  pull_request:
+    paths:
+      - ".github/workflows/ventoy-release.yml"
+      - "driver/**"
+      - "ventoy/**"
+      - "Cargo.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ventoy-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  UPSTREAM: ventoy/Ventoy
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      build: ${{ steps.plan.outputs.build }}
+      publish: ${{ steps.plan.outputs.publish }}
+    steps:
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          version="${INPUT_VERSION#v}"
+          if [ -z "$version" ]; then
+            version=$(gh release view --repo "$UPSTREAM" --json tagName --jq .tagName)
+            version="${version#v}"
+          fi
+          case "$version" in
+            *[!0-9.]* | "") echo "::error::Unexpected Ventoy version '$version'"; exit 1 ;;
+          esac
+          tag="ventoy-$version"
+          exists=false
+          gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && exists=true
+          build=true publish=false
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            if [ "$GITHUB_REF" != refs/heads/main ]; then
+              echo "::notice::Releases are only published from main; building without publishing."
+            elif [ "$exists" = true ]; then
+              echo "::notice::$tag is already released; nothing to do."
+              build=false
+            else
+              publish=true
+            fi
+          fi
+          echo "Ventoy $version, tag $tag, build=$build, publish=$publish"
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "build=$build"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq mtools dosfstools qemu-system-x86 ovmf
+          # Let QEMU use KVM when the runner offers it (it falls back to TCG).
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm.rules >/dev/null
+          { sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm; } || true
+          rustup target add x86_64-unknown-uefi
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Build the .efi files
+        run: |
+          cargo test -p claw-common
+          cargo efi
+          ls -l target/x86_64-unknown-uefi/release/*.efi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: claw-efi
+          path: target/x86_64-unknown-uefi/release/*.efi
+          retention-days: 30
+
+      - name: Test the patcher
+        working-directory: ventoy/installer
+        run: |
+          deno fmt --check
+          deno lint
+          deno task test
+
+      - name: Download Ventoy ${{ env.VERSION }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir upstream && cd upstream
+          gh release download "v$VERSION" --repo "$UPSTREAM" \
+            --pattern "ventoy-$VERSION-windows.zip" \
+            --pattern "ventoy-$VERSION-linux.tar.gz" \
+            --pattern sha256.txt
+          grep -E "ventoy-$VERSION-(windows\.zip|linux\.tar\.gz)\$" sha256.txt | sha256sum -c
+          curl -fsSL -o COPYING "https://raw.githubusercontent.com/$UPSTREAM/v$VERSION/COPYING"
+
+      - name: Patch the packages
+        working-directory: ventoy/installer
+        run: |
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          deno task package --out "$GITHUB_WORKSPACE/dist" \
+            --license "$GITHUB_WORKSPACE/upstream/COPYING" \
+            --source "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" \
+            "$GITHUB_WORKSPACE"/upstream/ventoy-*-windows.zip \
+            "$GITHUB_WORKSPACE"/upstream/ventoy-*-linux.tar.gz
+          cp "$GITHUB_WORKSPACE/upstream/COPYING" "$GITHUB_WORKSPACE/dist/LICENSE-Ventoy.txt"
+
+      - name: Boot them in QEMU
+        working-directory: ventoy/installer
+        run: |
+          for pkg in "$GITHUB_WORKSPACE"/dist/ventoy-*-claw-*; do
+            name=$(basename "$pkg" .zip)
+            deno task smoke --shots "$GITHUB_WORKSPACE/shots/${name%.tar.gz}" "$pkg"
+          done
+
+      - name: Write checksums and notes
+        run: |
+          cd dist
+          sha256sum ventoy-* > SHA256SUMS
+          cat SHA256SUMS
+          src="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/$GITHUB_SHA"
+          cat > ../notes.md <<EOF
+          [Ventoy $VERSION](https://github.com/$UPSTREAM/releases/tag/v$VERSION) with the MSI Claw d-pad driver built into its boot image. Use it exactly like Ventoy: run \`Ventoy2Disk\` to install to a stick, or to update one. The d-pad keeps working after either, with Ventoy's Secure Boot support option on or off.
+
+          **Secure Boot must be off in the firmware**, because the added files are unsigned. Untested on Claw hardware so far; each build is boot-tested in QEMU.
+
+          What changed: only \`ventoy/ventoy.disk.img.xz\`. Ventoy's GRUB moves to \`/EFI/claw/grubx64.efi\`, \`claw-chainload\` takes its place at \`/EFI/BOOT/grubx64_real.efi\`, and the driver is added as \`/EFI/claw/claw-dpad.efi\`. Each package also gains \`CLAW-DPAD-README.txt\` and \`LICENSE-Ventoy.txt\`.
+
+          This is not an official Ventoy release. Ventoy is GPLv3 (\`LICENSE-Ventoy.txt\`); its source is at https://github.com/$UPSTREAM/tree/v$VERSION. The d-pad sources for this build: $src
+          EOF
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ventoy-${{ env.VERSION }}-claw
+          path: |
+            dist/
+            shots/
+            notes.md
+          retention-days: 14
+
+  release:
+    needs: [plan, build]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ventoy-${{ needs.plan.outputs.version }}-claw
+
+      - name: Publish ${{ needs.plan.outputs.tag }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.tag }}
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Ventoy $VERSION with Claw d-pad" \
+            --notes-file notes.md

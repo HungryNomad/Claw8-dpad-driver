@@ -1,6 +1,15 @@
-//! claw-chainload: takes the place of `\EFI\BOOT\BOOTX64.EFI` on a boot
-//! partition (Ventoy's VTOYEFI), starts the d-pad driver, then hands off to
-//! the original loader, which the installer renamed next to it.
+//! claw-chainload: starts the d-pad driver, then hands off to the loader it
+//! stands in for on Ventoy's EFI partition (VTOYEFI). It has two homes:
+//!
+//! - Patched Ventoy packages put it at `\EFI\BOOT\grubx64_real.efi` and move
+//!   Ventoy's GRUB to `\EFI\claw\grubx64.efi`. With Ventoy's Secure Boot
+//!   support on, shim reaches it through `fbx64.efi`; with it off, Ventoy
+//!   itself copies it to `\EFI\BOOT\BOOTX64.EFI`. Either way GRUB comes next.
+//! - The stick installer puts it at `\EFI\BOOT\BOOTX64.EFI` and renames
+//!   Ventoy's loader to `\EFI\BOOT\BOOTX64_ORIG.EFI`.
+//!
+//! The moved GRUB wins when both exist, so installing on top of a patched
+//! stick never loops back through shim.
 //!
 //! The original loader is started from its real device path, so it sees its
 //! own location and finds its neighbours (shim → `grubx64.efi`, GRUB → its
@@ -21,6 +30,8 @@ use uefi::{CStr16, Handle, Status, cstr16, entry, println};
 
 /// The d-pad driver, loaded first.
 const DRIVER: &CStr16 = cstr16!("\\EFI\\claw\\claw-dpad.efi");
+/// Ventoy's GRUB, moved here by the package patcher. Tried first.
+const PATCHED: &CStr16 = cstr16!("\\EFI\\claw\\grubx64.efi");
 /// The loader this image replaced, renamed in the same folder by the installer.
 /// Ventoy's loader is shim, which only runs Ventoy's `fbx64.efi` (and from it
 /// GRUB) when its own path starts with `\EFI\BOOT\BOOT`, so the name must too.
@@ -59,13 +70,22 @@ fn start_driver(device: Handle) -> uefi::Result {
     boot::start_image(driver)
 }
 
+/// Loads the next loader: the moved GRUB if present, else the renamed original.
+/// Only a missing file falls through, so a broken GRUB is reported, not skipped.
+fn load_next(device: Handle) -> (&'static CStr16, uefi::Result<Handle>) {
+    match load(device, PATCHED) {
+        Err(e) if e.status() == Status::NOT_FOUND => (ORIGINAL, load(device, ORIGINAL)),
+        other => (PATCHED, other),
+    }
+}
+
 /// Prints `what` failed with `status` and leaves it on screen briefly.
 fn report(what: &CStr16, status: Status) {
     println!("claw-chainload: {what}: {status:?}");
     boot::stall(ERROR_PAUSE);
 }
 
-/// Entry point: driver first (best effort), then the original loader.
+/// Entry point: driver first (best effort), then the next loader.
 #[entry]
 fn main() -> Status {
     let device = match get::<LoadedImage>(boot::image_handle()).map(|me| me.device()) {
@@ -76,10 +96,11 @@ fn main() -> Status {
     if let Err(e) = start_driver(device) {
         report(DRIVER, e.status());
     }
-    match load(device, ORIGINAL).and_then(boot::start_image) {
+    let (next, image) = load_next(device);
+    match image.and_then(boot::start_image) {
         Ok(()) => Status::SUCCESS,
         Err(e) => {
-            report(ORIGINAL, e.status());
+            report(next, e.status());
             e.status()
         }
     }
